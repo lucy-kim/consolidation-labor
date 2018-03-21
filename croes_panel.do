@@ -3,27 +3,51 @@
 local dta /ifs/home/kimk13/locallabor/data
 cd `dta'/labordata
 
-loc file all_data_M_2015.csv
-insheet using `file', clear comma names
-drop v30
+*for years split into multiple files append first
+/* forval y=2005/2013 {
+  forval i = 1/3 {
+    loc file MSA_M`y'_dl_`i'.csv
+    insheet using `file', clear comma names
+    tempfile d`y'_`i'
+    save `d`y'_`i''
+  }
+  clear
+  forval i = 1/3 {
+    append using `d`y'_`i''
+  }
+  outsheet using MSA_M`y'_dl.csv, comma names replace
+} */
 
-*explore whether i can create the MSA-industry-occupation level data
-*area_type = 1 for US, = 2 for state, =3 for Guam, PR, VI, =4 for MSA, =5 for Metropolitan Division / New England City and Town Areas (NECTAs) divisions, =6 for nonmetropolitan area
-*Met/NECT divisions are smaller units than MSAs or NECTs (https://www.bls.gov/sae/saemd.htm, https://www.census.gov/geo/reference/webatlas/metdivs.html)
-tab area_type
+*do conv_xls_csv.sh
 
-*keep MSAs & nonmetropolitan areas
-keep if area_type==4 | area_type==6
+ list area* group occ* in 1/30
 
-*industry-specific #s not available; only naics_title="cross-industry"
-drop naics*
+forval y=2005/2016 {
+  di "Year `y'-------------------------------"
+  loc file MSA_M`y'_dl.csv
+  insheet using `file', clear comma names
 
-*group = total for occtitle="All Occupations"
-*group = major for major categories of occtitle, e.g. Management Occupations, Personal Care and Service Occupations, Healthcare Practitioners and Technic
-tab group
+  *explore whether i can create the MSA-industry-occupation level data
+  *area_type = 1 for US, = 2 for state, =3 for Guam, PR, VI, =4 for MSA, =5 for Metropolitan Division / New England City and Town Areas (NECTAs) divisions, =6 for nonmetropolitan area
+  *Met/NECT divisions are smaller units than MSAs or NECTs (https://www.bls.gov/sae/saemd.htm, https://www.census.gov/geo/reference/webatlas/metdivs.html)
+  *capture tab area_type
 
-tempfile tmp
-save `tmp'
+  *keep MSAs & nonmetropolitan areas
+  *keep if area_type==4 | area_type==6
+
+  *industry-specific #s not available; only naics_title="cross-industry"
+  *drop naics*
+
+  *group = total for occtitle="All Occupations"
+  *group = major for major categories of occtitle, e.g. Management Occupations, Personal Care and Service Occupations, Healthcare Practitioners and Technic
+  capture rename occ_group group
+  tab group
+
+  gen yr = `y'
+
+  tempfile tmp`y'
+  save `tmp`y''
+}
 
 *------------------------
 *merge with % employment in the industry in the given occupation
@@ -63,6 +87,7 @@ rename occupation occtitle
 drop if occcode==""
 
 replace occcode = subinstr(occcode, ".00","",.)
+rename occcode occ_code
 
 tempfile occ
 save `occ'
@@ -111,17 +136,21 @@ save `indxwalk'
 *------------------------
 
 *merge occupation-industry xwalk with MSA-occupation level data
-use `tmp', clear
-merge m:1 occcode using `occ', keep(1 3)
+clear
+forval y=2005/2016 {
+  append using `tmp`y''
+}
+merge m:1 occ_code using `occ', keep(1 3)
 
 *unmatched obs mostly have group = "major" or "total"
-count if (group=="major" | group=="total") & _m==1
+tab group _m
+* if group = major or total, all not matched
 
 *if not those 2 groups, only 5 occupations are unmatched
 preserve
 keep if _m==1
 drop if group=="major" | group=="total"
-tab occt
+tab occ_t
 *chief executives, door-to-door sale workers, fishers, substitute teachers, all other teachers and instructors
 restore
 
