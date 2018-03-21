@@ -25,6 +25,9 @@ count
 *1098
 restore
 
+gen zip_code = substr(mloczip, 1,5)
+destring zip_code, replace
+
 tempfile tmp
 save `tmp'
 
@@ -34,6 +37,9 @@ use `tmp', clear
 rename mcrnum provid
 drop fy
 rename year fy
+
+replace hrrcode = 352 if provid== 390067
+replace hsacode = 39050 if provid== 390067
 
 drop if provid==.
 drop if hrrcode==. | hsacode==.
@@ -63,8 +69,13 @@ foreach v in "hrr" "hsa" {
     assert `v'num!=.
 }
 
-keep provid fy sysid hrrnum hsanum
-collapse (max) sysid, by(provid fy hrrnum hsanum)
+keep provid fy sysid hrrnum hsanum zip_code
+collapse (max) sysid, by(provid fy hrrnum hsanum zip_code)
+duplicates tag provid fy, gen(dup)
+*just randomly drop one ZIP code
+gsort provid fy -sysid
+bys provid fy: drop if _n==2 & dup > 0
+drop dup
 duplicates tag provid fy, gen(dup)
 assert dup==0
 drop dup
@@ -95,7 +106,7 @@ save `joinsys'
 *create market-year level data on whether a merger into a system with existing hospitals in the same market
 foreach v0 in "hrr" "hsa" {
     use `joinsys', clear
-    collapse (max) joinsys_`v0' joinsys_n`v0' (mean) nhosp_`v0', by(`v0'num fy)
+    collapse (max) joinsys_`v0' joinsys_n`v0' (mean) nhosp_`v0', by(`v0'num fy zip)
 
     rename joinsys_`v0' joinsys_samemkt
     rename joinsys_n`v0' joinsys_othmkt
